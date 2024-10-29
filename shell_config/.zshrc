@@ -102,3 +102,20 @@ source $ZSH/oh-my-zsh.sh
 # Example aliases
 # alias zshconfig="mate ~/.zshrc"
 # alias ohmyzsh="mate ~/.oh-my-zsh"
+
+# autoware setup
+export PATH="$PATH:/home/shanpengma/.local/bin"
+export CCACHE_DIR="/var/tmp/ccache"
+export CC="/usr/lib/ccache/gcc"
+export CXX="/usr/lib/ccache/g++"
+export RCUTILS_COLORIZED_OUTPUT=1
+export GTEST_COLOR=1
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export CYCLONEDDS_URI=file:///home/shanpengma/cyclonedds.xml
+export PATH=~/.local/bin:$PATH
+export PATH="/usr/local/cuda/bin:$PATH"
+export LD_LIBRARY_PATH="/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
+export RCUTILS_CONSOLE_OUTPUT_FORMAT="[{severity} {time}] [{name}]: {message} ({function_name}() at {file_name}:{line_number})"
+source /opt/ros/humble/setup.zsh
+eval "$(ssh-agent -s)"
+ssh-add ~/.ssh/id_rsa_github
