@@ -47,22 +47,16 @@ if [ ! -f "$topic_list_file" ]; then
     exit 1
 fi
 
-# 读取 topic_list.txt 并生成 --remap 参数
+# 读取 topic_list.txt 并生成 --remap 参数，仅对包含指定前缀的 topic 执行重映射
 remap_args=""
 while IFS= read -r topic; do
     # 检查 topic 是否包含任意一个排除的前缀
-    exclude=false
     for prefix in "${exclude_prefixes[@]}"; do
         if [[ "$topic" == "$prefix"* ]]; then
-            exclude=true
+            remap_args+=" --remap ${topic}:=/unused_topic"
             break
         fi
     done
-
-    # 如果 topic 不包含排除的前缀，则添加 remap 参数
-    if ! $exclude; then
-        remap_args+=" --remap ${topic}:=/unused_topic"
-    fi
 done < "$topic_list_file"
 
 # 提示即将执行的命令
