@@ -9,25 +9,28 @@ NC='\033[0m' # 重置颜色
 
 # 检查是否提供了rosbag文件名或目录
 if [ "$#" -lt 1 ]; then
-    echo -e "${RED}Usage: $0 <rosbag_file_or_directory> [--exclude-from-prefix <prefix>] [additional ros2 bag play options]${NC}"
+    echo -e "${RED}Usage: $0 <rosbag_file_or_directory> [--exclude-from-prefix <prefix1> <prefix2> ...] [additional ros2 bag play options]${NC}"
     exit 1
 fi
 
 # 初始化变量
 rosbag_file="$1"
 shift  # 移除第一个参数，剩余参数继续解析
-exclude_prefix=""
+exclude_prefixes=()
 additional_args=()
 
 # 解析其余参数
 while [[ "$#" -gt 0 ]]; do
     case "$1" in
         --exclude-from-prefix)
-            exclude_prefix="$2"
-            shift 2  # 跳过此参数及其后缀
+            shift  # 跳过此参数
+            while [[ "$#" -gt 0 && "$1" != -* ]]; do
+                exclude_prefixes+=("$1")  # 添加每个前缀到数组中
+                shift
+            done
             ;;
         *)
-            additional_args+=("$1")  # 将其他参数添加到additional_args数组
+            additional_args+=("$1")  # 将其他参数添加到 additional_args 数组
             shift
             ;;
     esac
@@ -47,8 +50,17 @@ fi
 # 读取 topic_list.txt 并生成 --remap 参数
 remap_args=""
 while IFS= read -r topic; do
-    # 如果 topic 以指定的前缀开头，生成 remap 参数
-    if [[ "$topic" == "$exclude_prefix"* ]]; then
+    # 检查 topic 是否包含任意一个排除的前缀
+    exclude=false
+    for prefix in "${exclude_prefixes[@]}"; do
+        if [[ "$topic" == "$prefix"* ]]; then
+            exclude=true
+            break
+        fi
+    done
+
+    # 如果 topic 不包含排除的前缀，则添加 remap 参数
+    if ! $exclude; then
         remap_args+=" --remap ${topic}:=/unused_topic"
     fi
 done < "$topic_list_file"
