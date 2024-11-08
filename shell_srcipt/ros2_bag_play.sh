@@ -36,9 +36,6 @@ while [[ "$#" -gt 0 ]]; do
     esac
 done
 
-# 调试输出所有排除的前缀
-echo -e "${BLUE}Excluding topics with prefixes:${NC} ${exclude_prefixes[*]}"
-
 # 生成 topic_list.txt 文件
 echo -e "${BLUE}Generating topic list...${NC}"
 ./filter_topic_info_from_ros2_bag_info.sh "$rosbag_file" || { echo -e "${RED}Failed to generate topic list.${NC}"; exit 1; }
@@ -51,34 +48,27 @@ if [ ! -f "$topic_list_file" ]; then
 fi
 
 # 读取 topic_list.txt 并生成 --remap 参数，仅对包含指定前缀的 topic 执行重映射
-remap_args=""
+remap_args=()  # 使用数组来存储多个 --remap 参数
 while IFS= read -r topic; do
     # 检查 topic 是否包含任意一个排除的前缀
-    exclude=false
     for prefix in "${exclude_prefixes[@]}"; do
         if [[ "$topic" == "$prefix"* ]]; then
             echo -e "${YELLOW}Excluding topic:${NC} $topic (matched prefix: $prefix)"
-            remap_args+=" --remap ${topic}:=/unused_topic"
-            exclude=true
+            remap_args+=("--remap" "${topic}:=/unused_topic")
             break
         fi
     done
-
-    # 若未匹配任何前缀，则输出调试信息
-    if ! $exclude; then
-        echo -e "${GREEN}Including topic:${NC} $topic"
-    fi
 done < "$topic_list_file"
 
 # 提示即将执行的命令
 echo -e "${GREEN}Ready to execute the following command:${NC}"
-echo -e "${YELLOW}ros2 bag play $rosbag_file $remap_args ${additional_args[*]}${NC}"
+echo -e "${YELLOW}ros2 bag play $rosbag_file ${remap_args[*]} ${additional_args[*]}${NC}"
 
 # 用户确认
 read -p "Do you want to proceed? [Y/n]: " confirm
 if [[ -z "$confirm" || "$confirm" =~ ^[Yy]$ ]]; then
     echo -e "${GREEN}Executing...${NC}"
-    ros2 bag play "$rosbag_file" $remap_args "${additional_args[@]}"
+    ros2 bag play "$rosbag_file" "${remap_args[@]}" "${additional_args[@]}"
 else
     echo -e "${RED}Command execution cancelled.${NC}"
     exit 0
