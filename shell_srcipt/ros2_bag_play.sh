@@ -36,6 +36,9 @@ while [[ "$#" -gt 0 ]]; do
     esac
 done
 
+# 调试输出所有排除的前缀
+echo -e "${BLUE}Excluding topics with prefixes:${NC} ${exclude_prefixes[*]}"
+
 # 生成 topic_list.txt 文件
 echo -e "${BLUE}Generating topic list...${NC}"
 ./filter_topic_info_from_ros2_bag_info.sh "$rosbag_file" || { echo -e "${RED}Failed to generate topic list.${NC}"; exit 1; }
@@ -51,12 +54,20 @@ fi
 remap_args=""
 while IFS= read -r topic; do
     # 检查 topic 是否包含任意一个排除的前缀
+    exclude=false
     for prefix in "${exclude_prefixes[@]}"; do
         if [[ "$topic" == "$prefix"* ]]; then
+            echo -e "${YELLOW}Excluding topic:${NC} $topic (matched prefix: $prefix)"
             remap_args+=" --remap ${topic}:=/unused_topic"
+            exclude=true
             break
         fi
     done
+
+    # 若未匹配任何前缀，则输出调试信息
+    if ! $exclude; then
+        echo -e "${GREEN}Including topic:${NC} $topic"
+    fi
 done < "$topic_list_file"
 
 # 提示即将执行的命令
