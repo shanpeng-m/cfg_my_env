@@ -1,0 +1,8 @@
+- name: System_check
+  stat:
+    path: "/usr/local/bin/brew"
+  register: brew_check
+  when: ansible_os_family == 'Darwin'
+
+- include_tasks: install_ansible.yml
+  when: not ansible_installation_successful|default(false)

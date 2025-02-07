@@ -1,0 +1,51 @@
+- name: 安装zsh插件
+  git:
+    repo: "{{ item.repo }}"
+    dest: "{{ ansible_user_dir }}/.oh-my-zsh/custom/plugins/{{ item.name }}"
+    depth: 1
+  loop:
+    - {
+        name: zsh-autosuggestions,
+        repo: https://github.com/zsh-users/zsh-autosuggestions,
+      }
+    - {
+        name: zsh-syntax-highlighting,
+        repo: https://github.com/zsh-users/zsh-syntax-highlighting,
+      }
+
+- name: 部署zsh配置文件
+  template:
+    src: zshrc.j2
+    dest: "{{ ansible_user_dir }}/.zshrc"
+    owner: "{{ ansible_user_id }}"
+    group: "{{ ansible_user_gid }}"
+  notify: reload zsh config
+
+- name: 设置默认shell
+  become: yes
+  shell: |
+    if [[ $(basename "$SHELL") != "zsh" ]]; then
+      chsh -s $(which zsh) {{ ansible_user_id }}
+    fi
+  args:
+    executable: /bin/bash
+  changed_when: false
+
+# 在现有配置任务后追加
+- name: 部署自定义配置文件
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest | expanduser }}"
+    owner: "{{ ansible_user_id }}"
+    mode: 0644
+  loop: "{{ custom_files }}"
+  when: custom_files is defined
+  tags: custom_config
+
+- name: 安装powerlevel10k主题
+  git:
+    repo: https://github.com/romkatv/powerlevel10k.git
+    dest: "{{ ansible_user_dir }}/.oh-my-zsh/custom/themes/powerlevel10k"
+    creates: "{{ ansible_user_dir }}/.oh-my-zsh/custom/themes/powerlevel10k/powerlevel10k.zsh-theme" # 幂等性检查
+  when: "'powerlevel10k' in zsh_plugins"
+  tags: themes

@@ -1,0 +1,13 @@
+# 位置：独立任务文件
+- name: 应用zsh配置
+  meta: flush_handlers # 触发配置重载
+
+- name: 验证安装结果
+  command: zsh --version
+  register: zsh_version
+  changed_when: false
+  tags: verification
+
+- debug:
+    msg: "成功安装zsh {{ zsh_version.stdout }}"
+  when: zsh_version is succeeded

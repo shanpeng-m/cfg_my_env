@@ -1,0 +1,20 @@
+# 工具列表
+all_tools: [git, docker, python3, nodejs]
+linux_tools: [build-essential, apt-transport-https]
+mac_tools: [mas, cocoapods]
+
+git_config:
+  user.name: "Dev User"
+  user.email: "dev@example.com"
+
+zsh_plugins:
+  - docker
+  - kubectl
+  - zsh-autosuggestions
+  - zsh-syntax-highlighting
+
+custom_files:
+  - src: custom_aliases.zsh
+    dest: ~/.custom_aliases.zsh
+
+timezone: Asia/Tokyo

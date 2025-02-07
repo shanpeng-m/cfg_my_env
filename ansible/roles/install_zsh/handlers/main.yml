@@ -1,0 +1,10 @@
+- name: reload zsh config
+  command: source {{ ansible_user_dir }}/.zshrc
+  # 更安全的执行方式（通过shell模块）：
+  # shell: |
+  #   source ~/.zshrc
+  #   exec zsh
+  become: no
+  # 限制执行用户
+  args:
+    executable: /bin/zsh

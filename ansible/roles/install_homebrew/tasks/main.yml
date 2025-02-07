@@ -1,0 +1,5 @@
+- name: Install Homebrew
+  shell: /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  when:
+    - ansible_os_family == 'Darwin'
+    - not brew_check.stat.exists
