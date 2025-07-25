@@ -5,4 +5,4 @@ systemd-analyzer-gui (1.0.0-1) unstable; urgency=medium
   * SSH connection support
   * Multi-host analysis capabilities
 
- -- Your Name <your.email@example.com>  $(date -R) 
+ -- Shanpeng MA <shanpeng.ma@tier4.jp>  $(date -R) 

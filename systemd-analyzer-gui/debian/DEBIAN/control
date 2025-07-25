@@ -5,7 +5,7 @@ Priority: optional
 Architecture: amd64
 Depends: python3 (>= 3.6), python3-tk, sshpass
 Recommends: python3-pip
-Maintainer: Your Name <your.email@example.com>
+Maintainer: Shanpeng MA <shanpeng.ma@tier4.jp>
 Description: SystemD Analysis Tool with GUI
  A graphical user interface tool for analyzing SystemD services on remote servers
  via SSH connections. Features include:
