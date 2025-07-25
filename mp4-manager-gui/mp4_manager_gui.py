@@ -5,7 +5,7 @@ A GUI application for managing remote MP4 files and screen recorder service
 """
 
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog, scrolledtext
+from tkinter import ttk, messagebox, filedialog, scrolledtext, simpledialog
 import subprocess
 import threading
 import os
@@ -28,6 +28,7 @@ class RemoteMP4Manager:
         self.remote_dir = tk.StringVar(value="/tmp")
         self.local_dir = tk.StringVar(value="./downloaded_videos")
         self.service_name = tk.StringVar(value="screen-recorder.service")
+        self.sudo_password = tk.StringVar(value="")  # 新增sudo密码
         
         # GUI state variables
         self.is_connected = tk.BooleanVar(value=False)
@@ -87,9 +88,18 @@ class RemoteMP4Manager:
         ttk.Label(conn_frame, text="Remote Host:").grid(row=1, column=0, sticky=tk.W, pady=5)
         ttk.Entry(conn_frame, textvariable=self.remote_host, width=30).grid(row=1, column=1, sticky=tk.W, padx=(10, 0), pady=5)
         
-        ttk.Label(conn_frame, text="Password:").grid(row=2, column=0, sticky=tk.W, pady=5)
+        ttk.Label(conn_frame, text="SSH Password:").grid(row=2, column=0, sticky=tk.W, pady=5)
         password_entry = ttk.Entry(conn_frame, textvariable=self.remote_password, show="*", width=30)
         password_entry.grid(row=2, column=1, sticky=tk.W, padx=(10, 0), pady=5)
+        
+        ttk.Label(conn_frame, text="Sudo Password:").grid(row=3, column=0, sticky=tk.W, pady=5)
+        sudo_password_entry = ttk.Entry(conn_frame, textvariable=self.sudo_password, show="*", width=30)
+        sudo_password_entry.grid(row=3, column=1, sticky=tk.W, padx=(10, 0), pady=5)
+        
+        # Add help text for sudo password
+        help_label = ttk.Label(conn_frame, text="(Required for service management operations)", 
+                             foreground="gray", font=("TkDefaultFont", 8))
+        help_label.grid(row=4, column=1, sticky=tk.W, padx=(10, 0))
         
         # Directory settings
         dir_frame = ttk.LabelFrame(main_frame, text="Directory Settings", padding=15)
@@ -120,6 +130,13 @@ class RemoteMP4Manager:
         
         self.connection_status = ttk.Label(test_frame, text="Not connected", foreground="red")
         self.connection_status.pack(side=tk.LEFT, padx=(20, 0))
+        
+        # Sudo test button
+        self.sudo_test_button = ttk.Button(test_frame, text="Test Sudo", command=self.test_sudo)
+        self.sudo_test_button.pack(side=tk.LEFT, padx=(20, 0))
+        
+        self.sudo_status = ttk.Label(test_frame, text="Not tested", foreground="gray")
+        self.sudo_status.pack(side=tk.LEFT, padx=(10, 0))
         
     def setup_service_tab(self, parent):
         """Setup service management tab"""
@@ -247,8 +264,18 @@ class RemoteMP4Manager:
                                "Please install it with:\n"
                                "sudo apt-get install sshpass")
             
-    def execute_remote_command(self, command):
+    def execute_remote_command(self, command, use_sudo=False):
         """Execute command on remote host"""
+        if use_sudo and self.sudo_password.get():
+            # Use echo to pipe password to sudo -S
+            command = f"echo '{self.sudo_password.get()}' | sudo -S {command}"
+        elif use_sudo:
+            # Ask for sudo password if not set
+            password = self.prompt_sudo_password()
+            if not password:
+                return False, "", "Sudo password required"
+            command = f"echo '{password}' | sudo -S {command}"
+            
         cmd = [
             "sshpass", "-p", self.remote_password.get(),
             "ssh", "-o", "StrictHostKeyChecking=no",
@@ -264,6 +291,15 @@ class RemoteMP4Manager:
         except Exception as e:
             return False, "", str(e)
             
+    def prompt_sudo_password(self):
+        """Prompt user for sudo password"""
+        password = simpledialog.askstring("Sudo Password", 
+                                         "Enter sudo password for remote host:", 
+                                         show='*')
+        if password:
+            self.sudo_password.set(password)
+        return password
+        
     def test_connection(self):
         """Test SSH connection to remote host"""
         if self.operation_in_progress.get():
@@ -279,6 +315,31 @@ class RemoteMP4Manager:
             self.message_queue.put(("connection_test", success, stdout, stderr))
             
         threading.Thread(target=test_thread, daemon=True).start()
+        
+    def test_sudo(self):
+        """Test sudo access on remote host"""
+        if not self.is_connected.get():
+            messagebox.showwarning("Not Connected", "Please test SSH connection first")
+            return
+            
+        if self.operation_in_progress.get():
+            return
+            
+        if not self.sudo_password.get():
+            password = self.prompt_sudo_password()
+            if not password:
+                return
+                
+        self.operation_in_progress.set(True)
+        self.sudo_test_button.config(state="disabled")
+        
+        def sudo_test_thread():
+            self.log_message("Testing sudo access...")
+            success, stdout, stderr = self.execute_remote_command("whoami", use_sudo=True)
+            
+            self.message_queue.put(("sudo_test", success, stdout, stderr))
+            
+        threading.Thread(target=sudo_test_thread, daemon=True).start()
         
     def check_service_status(self):
         """Check screen recorder service status"""
@@ -320,10 +381,10 @@ class RemoteMP4Manager:
             self.log_message(f"Enabling service {service}...")
             
             # Enable service
-            success1, stdout1, stderr1 = self.execute_remote_command(f"sudo systemctl enable {service}")
+            success1, stdout1, stderr1 = self.execute_remote_command(f"systemctl enable {service}", use_sudo=True)
             
             # Start service
-            success2, stdout2, stderr2 = self.execute_remote_command(f"sudo systemctl start {service}")
+            success2, stdout2, stderr2 = self.execute_remote_command(f"systemctl start {service}", use_sudo=True)
             
             self.message_queue.put(("service_enable", success1 and success2, 
                                   f"Enable: {stdout1}\nStart: {stdout2}", 
@@ -346,7 +407,7 @@ class RemoteMP4Manager:
         def stop_thread():
             service = self.service_name.get()
             self.log_message(f"Stopping service {service}...")
-            success, stdout, stderr = self.execute_remote_command(f"sudo systemctl stop {service}")
+            success, stdout, stderr = self.execute_remote_command(f"systemctl stop {service}", use_sudo=True)
             
             self.message_queue.put(("service_stop", success, stdout, stderr))
             
@@ -367,7 +428,7 @@ class RemoteMP4Manager:
         def restart_thread():
             service = self.service_name.get()
             self.log_message(f"Restarting service {service}...")
-            success, stdout, stderr = self.execute_remote_command(f"sudo systemctl restart {service}")
+            success, stdout, stderr = self.execute_remote_command(f"systemctl restart {service}", use_sudo=True)
             
             self.message_queue.put(("service_restart", success, stdout, stderr))
             
@@ -549,10 +610,25 @@ class RemoteMP4Manager:
                         self.conn_indicator.config(foreground="red")
                         self.log_message(f"SSH connection failed: {stderr}", "ERROR")
                         
+                elif msg_type == "sudo_test":
+                    success, stdout, stderr = message[1], message[2], message[3]
+                    self.operation_in_progress.set(False)
+                    self.sudo_test_button.config(state="normal")
+                    
+                    if success:
+                        self.sudo_status.config(text="Sudo OK", foreground="green")
+                        self.log_message("Sudo access verified", "SUCCESS")
+                    else:
+                        self.sudo_status.config(text="Sudo failed", foreground="red")
+                        self.log_message(f"Sudo access failed: {stderr}", "ERROR")
+                        # Clear stored password if it failed
+                        if "incorrect password" in stderr.lower():
+                            self.sudo_password.set("")
+                        
                 elif msg_type == "service_status":
                     success, stdout, stderr = message[1], message[2], message[3]
                     self.operation_in_progress.set(False)
-                    
+                                        
                     self.service_status_text.delete(1.0, tk.END)
                     if success:
                         self.service_status_text.insert(tk.END, stdout)
