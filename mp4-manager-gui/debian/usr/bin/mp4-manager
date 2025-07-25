@@ -1,0 +1,4 @@
+#!/bin/bash
+# Remote MP4 Manager Launcher Script
+
+exec /opt/remote-mp4-manager/Remote_MP4_Manager "$@" 

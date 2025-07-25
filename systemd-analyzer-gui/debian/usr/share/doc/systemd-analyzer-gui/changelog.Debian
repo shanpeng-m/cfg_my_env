@@ -1,0 +1,8 @@
+systemd-analyzer-gui (1.0.0-1) unstable; urgency=medium
+
+  * Initial release
+  * SystemD analysis tool with GUI
+  * SSH connection support
+  * Multi-host analysis capabilities
+
+ -- Your Name <your.email@example.com>  $(date -R) 

@@ -1,0 +1,7 @@
+#!/bin/bash
+set -e
+
+# Remove symlink
+if [ -L "/usr/bin/systemd-analyzer" ]; then
+    rm -f /usr/bin/systemd-analyzer
+fi 

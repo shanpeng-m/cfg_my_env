@@ -1,0 +1,25 @@
+#!/bin/bash
+set -e
+
+# Update desktop database after removal
+if command -v update-desktop-database &> /dev/null; then
+    update-desktop-database /usr/share/applications 2>/dev/null || true
+    
+    # Update user-specific applications if running as user
+    if [ "$SUDO_USER" != "" ]; then
+        USER_APPS="/home/$SUDO_USER/.local/share/applications"
+        if [ -d "$USER_APPS" ]; then
+            update-desktop-database "$USER_APPS" 2>/dev/null || true
+        fi
+    fi
+fi
+
+# Try to refresh application menu
+if command -v gtk-update-icon-cache &> /dev/null; then
+    gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
+fi
+
+# Remove empty directories
+if [ -d "/opt/systemd-analyzer-gui" ] && [ -z "$(ls -A /opt/systemd-analyzer-gui)" ]; then
+    rmdir /opt/systemd-analyzer-gui
+fi 

@@ -1,0 +1,21 @@
+Package: systemd-analyzer-gui
+Version: 1.0.0
+Section: admin
+Priority: optional
+Architecture: amd64
+Depends: python3 (>= 3.6), python3-tk, sshpass
+Recommends: python3-pip
+Maintainer: Your Name <your.email@example.com>
+Description: SystemD Analysis Tool with GUI
+ A graphical user interface tool for analyzing SystemD services on remote servers
+ via SSH connections. Features include:
+ .
+  * Analyze multiple remote servers simultaneously
+  * Visual host configuration management
+  * Real-time execution logs
+  * Automatic result file organization
+  * SSH key and password authentication support
+  * Export analysis results to local directories
+ .
+ This tool is useful for system administrators, DevOps engineers,
+ and anyone who needs to analyze SystemD services across multiple servers. 

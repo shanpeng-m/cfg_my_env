@@ -1,0 +1,4 @@
+#!/bin/bash
+# SystemD Analyzer GUI Launcher Script
+
+exec /opt/systemd-analyzer-gui/SystemD_Analyzer "$@" 

@@ -1,0 +1,20 @@
+Package: remote-mp4-manager
+Version: 1.0.0
+Section: utils
+Priority: optional
+Architecture: amd64
+Depends: python3 (>= 3.6), python3-tk, sshpass
+Recommends: python3-pip
+Maintainer: Shanpeng MA <shanpeng.ma@tier4.jp>
+Description: Remote MP4 File Management Tool with GUI
+ A graphical user interface tool for managing MP4 files on remote servers
+ via SSH connections. Features include:
+ .
+  * Browse remote directories
+  * Download MP4 files
+  * View file information
+  * Simple and intuitive interface
+  * SSH key and password authentication support
+ .
+ This tool is useful for content creators, system administrators,
+ and anyone who needs to manage video files on remote servers. 

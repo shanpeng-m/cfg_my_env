@@ -13,9 +13,12 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Get absolute path of current directory
-INSTALL_DIR="$(pwd)"
-EXECUTABLE_PATH="$INSTALL_DIR/SystemD_Analyzer"
+# Check if we're in the right directory
+if [ ! -f "systemd_analyzer_gui.py" ]; then
+    echo -e "${RED}Error: systemd_analyzer_gui.py not found${NC}"
+    echo "Please run this script from the systemd-analyzer-gui directory"
+    exit 1
+fi
 
 # Check if Python3 is installed
 if ! command -v python3 &> /dev/null; then
@@ -118,74 +121,9 @@ if [ $? -eq 0 ]; then
     echo -e "${GREEN}Executable created: SystemD_Analyzer${NC}"
     echo -e "${BLUE}File size: $(du -h ../SystemD_Analyzer | cut -f1)${NC}"
     
-    # Create desktop entry with absolute path
-    cat > ../systemd-analyzer.desktop << EOF
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=SystemD Analyzer
-Comment=SystemD Analysis Tool with GUI
-Exec=$EXECUTABLE_PATH
-Icon=utilities-system-monitor
-Terminal=false
-Categories=System;Monitor;
-StartupNotify=true
-EOF
-    
-    chmod +x ../systemd-analyzer.desktop
-    
-    echo -e "${GREEN}Desktop entry created: systemd-analyzer.desktop${NC}"
-    
-    # Install desktop entry
-    DESKTOP_DIR="$HOME/.local/share/applications"
-    mkdir -p "$DESKTOP_DIR"
-    cp ../systemd-analyzer.desktop "$DESKTOP_DIR/"
-    
-    echo -e "${GREEN}Desktop entry installed to: $DESKTOP_DIR${NC}"
-    
-    # Update desktop database
-    if command -v update-desktop-database &> /dev/null; then
-        update-desktop-database "$DESKTOP_DIR"
-        echo -e "${GREEN}Desktop database updated${NC}"
-    fi
-    
-    # Create launcher script for easier execution
-    cat > ../systemd-analyzer << 'EOF'
-#!/bin/bash
-# SystemD Analyzer Launcher Script
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-EXECUTABLE="$SCRIPT_DIR/SystemD_Analyzer"
-
-if [ -f "$EXECUTABLE" ]; then
-    cd "$SCRIPT_DIR"
-    exec "$EXECUTABLE" "$@"
-else
-    echo "Error: SystemD_Analyzer executable not found in $SCRIPT_DIR"
-    exit 1
-fi
-EOF
-    
-    chmod +x ../systemd-analyzer
-    
-    echo ""
-    echo -e "${YELLOW}Installation complete!${NC}"
-    echo ""
-    echo -e "${GREEN}You can now run the application in several ways:${NC}"
-    echo "1. ${BLUE}Direct execution:${NC} ./SystemD_Analyzer"
-    echo "2. ${BLUE}Using launcher:${NC} ./systemd-analyzer"
-    echo "3. ${BLUE}From applications menu:${NC} Search for 'SystemD Analyzer'"
-    echo "4. ${BLUE}Command line anywhere:${NC} Add this directory to PATH"
-    echo ""
-    echo -e "${YELLOW}Files created:${NC}"
-    echo "- SystemD_Analyzer (main executable)"
-    echo "- systemd-analyzer (launcher script)"
-    echo "- systemd-analyzer.desktop (desktop entry)"
-    echo ""
-    echo -e "${BLUE}Desktop entry installed to:${NC} $DESKTOP_DIR/systemd-analyzer.desktop"
-    
 else
     echo -e "${RED}Build failed!${NC}"
+    echo "Check the error messages above for details"
     exit 1
 fi
 
@@ -196,5 +134,13 @@ rm -rf "$BUILD_DIR"
 
 echo -e "${GREEN}Done!${NC}"
 echo ""
-echo -e "${YELLOW}Note:${NC} If the application doesn't appear in the menu immediately,"
-echo "try logging out and back in, or run: killall gnome-panel (for GNOME)"
+echo -e "${YELLOW}Next steps:${NC}"
+echo "1. ${BLUE}Build Debian package:${NC} ./build-deb.sh"
+echo "2. ${BLUE}Or run directly:${NC} ./SystemD_Analyzer"
+echo ""
+echo -e "${BLUE}Dependencies required at runtime:${NC}"
+echo "- sshpass (for SSH connections)"
+echo "- python3-tk (for GUI, usually pre-installed)"
+echo ""
+echo "Install missing dependencies with:"
+echo "sudo apt-get install sshpass python3-tk"

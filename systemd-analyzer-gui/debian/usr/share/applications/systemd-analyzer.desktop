@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=SystemD Analyzer
+Comment=SystemD Analysis Tool with GUI
+Exec=/opt/systemd-analyzer-gui/SystemD_Analyzer
+Icon=systemd-analyzer
+Terminal=false
+Categories=System;Monitor;
+StartupNotify=true

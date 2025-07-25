@@ -1,0 +1,8 @@
+remote-mp4-manager (1.0.0-1) unstable; urgency=medium
+
+  * Initial release
+  * Remote MP4 file management with GUI
+  * SSH connection support
+  * File browsing and downloading capabilities
+
+ -- Shanpeng MA <shanpeng.ma@tier4.jp>  $(date -R) 
