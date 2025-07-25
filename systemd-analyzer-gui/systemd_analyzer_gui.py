@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+"""
+SystemD Analysis Tool GUI
+A graphical interface for analyzing SystemD services across multiple remote hosts.
+"""
+
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox, filedialog
 import subprocess
@@ -8,38 +13,83 @@ import threading
 import os
 import datetime
 import json
+import logging
 from pathlib import Path
+from typing import Dict, Optional, Tuple
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+class ConfigManager:
+    """Manages application configuration including hosts and settings."""
+    
+    DEFAULT_CONFIG = {
+        "hosts": {
+            "main": "autoware@192.168.20.11",
+            "sub": "autoware@192.168.20.21", 
+            "perception1": "autoware@192.168.20.31",
+            "perception2": "autoware@192.168.20.32",
+            "logging": "autoware@192.168.20.71"
+        },
+        "default_ssh_password": "autoware",
+        "default_sudo_password": "autoware",
+        "last_output_dir": "",
+        "window_geometry": "950x750"
+    }
+    
+    def __init__(self, config_file: str = "systemd_analyzer_config.json"):
+        self.config_file = config_file
+        self.config = self.load_config()
+    
+    def load_config(self) -> dict:
+        """Load configuration from file or return defaults."""
+        try:
+            if os.path.exists(self.config_file):
+                with open(self.config_file, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                    # Merge with defaults to ensure all keys exist
+                    merged_config = self.DEFAULT_CONFIG.copy()
+                    merged_config.update(config)
+                    return merged_config
+        except Exception as e:
+            logger.warning(f"Failed to load config: {e}")
+        return self.DEFAULT_CONFIG.copy()
+    
+    def save_config(self, config: dict) -> bool:
+        """Save configuration to file."""
+        try:
+            with open(self.config_file, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=2, ensure_ascii=False)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to save config: {e}")
+            return False
 
 class HostConfigDialog:
-    def __init__(self, parent, hosts_dict):
+    """Dialog for configuring target hosts."""
+    
+    def __init__(self, parent, hosts_dict: Dict[str, str]):
         self.result = None
         self.hosts = hosts_dict.copy()
         self.parent = parent
         
-        # 创建对话框窗口
+        # Create dialog window
         self.dialog = tk.Toplevel(parent)
         self.dialog.title("Host Configuration")
-        # 增加窗口大小，确保内容完全显示
         self.dialog.geometry("800x850")
         self.dialog.resizable(True, True)
         self.dialog.transient(parent)
         
-        # 先不设置grab_set，让子对话框能正常显示
-        # self.dialog.grab_set()
-        
-        # 居中显示
+        # Center window and set minimum size
         self.center_window()
-        
-        # 设置最小窗口大小
         self.dialog.minsize(650, 500)
         
         self.setup_ui()
-        
-        # 在UI设置完成后再设置grab_set，但允许子窗口
         self.dialog.after(100, self.setup_modal)
         
     def center_window(self):
-        # 更好的居中算法
+        """Center the dialog relative to parent window."""
         self.dialog.update_idletasks()
         parent_x = self.parent.winfo_rootx()
         parent_y = self.parent.winfo_rooty()
@@ -55,41 +105,42 @@ class HostConfigDialog:
         self.dialog.geometry(f"{dialog_width}x{dialog_height}+{x}+{y}")
         
     def setup_modal(self):
-        # 设置为模态，但不完全阻止子窗口
+        """Set up modal behavior."""
         self.dialog.focus_set()
         self.dialog.lift()
         
     def setup_ui(self):
+        """Set up the user interface."""
         main_frame = ttk.Frame(self.dialog, padding="15")
         main_frame.pack(fill=tk.BOTH, expand=True)
         
-        # 标题
+        # Title
         title_label = ttk.Label(main_frame, text="Configure Target Hosts", 
                                font=("Arial", 14, "bold"))
         title_label.pack(pady=(0, 15))
         
-        # 主机列表框架
+        # Host list frame
         list_frame = ttk.LabelFrame(main_frame, text="Host List", padding="10")
         list_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
         
-        # 创建Treeview用于显示和编辑主机
+        # Create Treeview for displaying and editing hosts
         columns = ("hostname", "address")
         self.tree = ttk.Treeview(list_frame, columns=columns, show="headings", height=12)
         
-        # 设置列标题
+        # Set column headers
         self.tree.heading("hostname", text="Hostname")
         self.tree.heading("address", text="Address (user@ip)")
         
-        # 设置列宽
+        # Set column widths
         self.tree.column("hostname", width=180, minwidth=120)
         self.tree.column("address", width=350, minwidth=250)
         
-        # 添加滚动条
+        # Add scrollbars
         scrollbar_v = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.tree.yview)
         scrollbar_h = ttk.Scrollbar(list_frame, orient=tk.HORIZONTAL, command=self.tree.xview)
         self.tree.configure(yscrollcommand=scrollbar_v.set, xscrollcommand=scrollbar_h.set)
         
-        # 网格布局
+        # Grid layout
         self.tree.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         scrollbar_v.grid(row=0, column=1, sticky=(tk.N, tk.S))
         scrollbar_h.grid(row=1, column=0, sticky=(tk.W, tk.E))
@@ -97,14 +148,14 @@ class HostConfigDialog:
         list_frame.columnconfigure(0, weight=1)
         list_frame.rowconfigure(0, weight=1)
         
-        # 填充现有主机数据
+        # Populate existing host data
         self.refresh_tree()
         
-        # 编辑框架
+        # Edit frame
         edit_frame = ttk.LabelFrame(main_frame, text="Add/Edit Host", padding="10")
         edit_frame.pack(fill=tk.X, pady=(0, 15))
         
-        # 使用网格布局，增加间距
+        # Use grid layout with spacing
         ttk.Label(edit_frame, text="Hostname:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10), pady=5)
         self.hostname_var = tk.StringVar()
         hostname_entry = ttk.Entry(edit_frame, textvariable=self.hostname_var, width=25)
@@ -118,7 +169,7 @@ class HostConfigDialog:
         edit_frame.columnconfigure(1, weight=1)
         edit_frame.columnconfigure(3, weight=2)
         
-        # 按钮框架 - 放在第二行
+        # Button frame - place on second row
         button_frame = ttk.Frame(edit_frame)
         button_frame.grid(row=1, column=0, columnspan=4, pady=(10, 0))
         
@@ -131,7 +182,7 @@ class HostConfigDialog:
         delete_button = ttk.Button(button_frame, text="Delete Selected", command=self.delete_host)
         delete_button.pack(side=tk.LEFT)
         
-        # 文件操作框架
+        # File operations frame
         file_frame = ttk.LabelFrame(main_frame, text="File Operations", padding="10")
         file_frame.pack(fill=tk.X, pady=(0, 15))
         
@@ -142,14 +193,14 @@ class HostConfigDialog:
         ttk.Button(file_button_frame, text="Save to File", command=self.save_to_file).pack(side=tk.LEFT, padx=(0, 10))
         ttk.Button(file_button_frame, text="Reset to Default", command=self.reset_to_default).pack(side=tk.LEFT)
         
-        # 底部按钮
+        # Bottom buttons
         bottom_frame = ttk.Frame(main_frame)
         bottom_frame.pack(fill=tk.X, pady=(10, 0))
         
         ttk.Button(bottom_frame, text="Cancel", command=self.cancel).pack(side=tk.RIGHT, padx=(10, 0))
         ttk.Button(bottom_frame, text="OK", command=self.ok).pack(side=tk.RIGHT)
         
-        # 添加说明文本
+        # Add help text
         help_frame = ttk.Frame(main_frame)
         help_frame.pack(fill=tk.X, pady=(5, 0))
         
@@ -157,28 +208,30 @@ class HostConfigDialog:
         help_label = ttk.Label(help_frame, text=help_text, font=("Arial", 9), foreground="gray")
         help_label.pack()
         
-        # 绑定事件
+        # Bind events
         self.tree.bind("<Double-1>", self.on_item_double_click)
         self.tree.bind("<Button-1>", self.on_item_click)
         
-        # 绑定回车键
+        # Bind Enter key
         hostname_entry.bind("<Return>", lambda e: address_entry.focus())
         address_entry.bind("<Return>", lambda e: self.add_host())
         
     def refresh_tree(self):
-        # 清空树
+        """Refresh the treeview with current host data."""
+        # Clear tree
         for item in self.tree.get_children():
             self.tree.delete(item)
             
-        # 添加主机
+        # Add hosts
         for hostname, address in self.hosts.items():
             self.tree.insert("", tk.END, values=(hostname, address))
             
     def on_item_click(self, event):
-        # 单击时清空输入框
+        """Handle single click on tree item."""
         pass
         
     def on_item_double_click(self, event):
+        """Handle double click on tree item to load into edit fields."""
         selection = self.tree.selection()
         if selection:
             item = selection[0]
@@ -187,17 +240,11 @@ class HostConfigDialog:
             self.address_var.set(values[1])
             
     def add_host(self):
+        """Add a new host to the configuration."""
         hostname = self.hostname_var.get().strip()
         address = self.address_var.get().strip()
         
         if not hostname or not address:
-            # 创建临时的消息框，确保它在对话框前面
-            msg = tk.Toplevel(self.dialog)
-            msg.withdraw()  # 先隐藏
-            msg.title("Error")
-            msg.transient(self.dialog)
-            msg.lift(self.dialog)
-            msg.focus_set()
             messagebox.showerror("Error", "Please enter both hostname and address", parent=self.dialog)
             return
             
@@ -211,6 +258,7 @@ class HostConfigDialog:
         self.address_var.set("")
         
     def update_host(self):
+        """Update the selected host configuration."""
         selection = self.tree.selection()
         if not selection:
             messagebox.showerror("Error", "Please select a host to update", parent=self.dialog)
@@ -223,11 +271,11 @@ class HostConfigDialog:
             messagebox.showerror("Error", "Please enter both hostname and address", parent=self.dialog)
             return
             
-        # 获取选中的原始主机名
+        # Get original hostname of selected item
         item = selection[0]
         old_hostname = self.tree.item(item, "values")[0]
         
-        # 如果主机名改变了，删除旧的
+        # If hostname changed, delete the old one
         if old_hostname != hostname:
             if hostname in self.hosts:
                 messagebox.showerror("Error", f"Hostname '{hostname}' already exists", parent=self.dialog)
@@ -240,6 +288,7 @@ class HostConfigDialog:
         self.address_var.set("")
         
     def delete_host(self):
+        """Delete the selected host from configuration."""
         selection = self.tree.selection()
         if not selection:
             messagebox.showerror("Error", "Please select a host to delete", parent=self.dialog)
@@ -253,7 +302,8 @@ class HostConfigDialog:
             self.refresh_tree()
             
     def load_from_file(self):
-        # 临时释放模态状态，让文件对话框正常显示
+        """Load host configuration from JSON file."""
+        # Temporarily release modal state for file dialog
         self.dialog.grab_release()
         
         file_path = filedialog.askopenfilename(
@@ -262,13 +312,13 @@ class HostConfigDialog:
             parent=self.dialog
         )
         
-        # 重新设置焦点
+        # Restore focus
         self.dialog.focus_set()
         self.dialog.lift()
         
         if file_path:
             try:
-                with open(file_path, 'r') as f:
+                with open(file_path, 'r', encoding='utf-8') as f:
                     loaded_hosts = json.load(f)
                 self.hosts = loaded_hosts
                 self.refresh_tree()
@@ -277,7 +327,8 @@ class HostConfigDialog:
                 messagebox.showerror("Error", f"Failed to load file: {str(e)}", parent=self.dialog)
                 
     def save_to_file(self):
-        # 临时释放模态状态
+        """Save host configuration to JSON file."""
+        # Temporarily release modal state
         self.dialog.grab_release()
         
         file_path = filedialog.asksaveasfilename(
@@ -287,30 +338,26 @@ class HostConfigDialog:
             parent=self.dialog
         )
         
-        # 重新设置焦点
+        # Restore focus
         self.dialog.focus_set()
         self.dialog.lift()
         
         if file_path:
             try:
-                with open(file_path, 'w') as f:
-                    json.dump(self.hosts, f, indent=2)
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    json.dump(self.hosts, f, indent=2, ensure_ascii=False)
                 messagebox.showinfo("Success", "Host configuration saved successfully", parent=self.dialog)
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to save file: {str(e)}", parent=self.dialog)
                 
     def reset_to_default(self):
+        """Reset to default host configuration."""
         if messagebox.askyesno("Confirm", "Reset to default host configuration?", parent=self.dialog):
-            self.hosts = {
-                "main": "autoware@192.168.20.11",
-                "sub": "autoware@192.168.20.21", 
-                "perception1": "autoware@192.168.20.31",
-                "perception2": "autoware@192.168.20.32",
-                "logging": "autoware@192.168.20.71"
-            }
+            self.hosts = ConfigManager.DEFAULT_CONFIG["hosts"].copy()
             self.refresh_tree()
             
     def ok(self):
+        """Confirm configuration changes."""
         if not self.hosts:
             messagebox.showerror("Error", "Please configure at least one host", parent=self.dialog)
             return
@@ -318,51 +365,59 @@ class HostConfigDialog:
         self.dialog.destroy()
         
     def cancel(self):
+        """Cancel configuration changes."""
         self.result = None
         self.dialog.destroy()
 
 class SystemDAnalyzerGUI:
+    """Main GUI application for SystemD analysis."""
+    
     def __init__(self, root):
         self.root = root
         self.root.title("SystemD Analysis Tool")
-        self.root.geometry("950x750")
-        self.root.resizable(True, True)
         
-        # 配置变量
-        self.hosts = {
-            "main": "autoware@192.168.20.11",
-            "sub": "autoware@192.168.20.21", 
-            "perception1": "autoware@192.168.20.31",
-            "perception2": "autoware@192.168.20.32",
-            "logging": "autoware@192.168.20.71"
-        }
+        # Initialize configuration manager
+        self.config_manager = ConfigManager()
         
-        self.ssh_password = tk.StringVar(value="autoware")
-        self.sudo_password = tk.StringVar(value="autoware")
-        self.output_dir = tk.StringVar(value="")
+        # Load configuration
+        self.hosts = self.config_manager.config["hosts"].copy()
+        self.ssh_password = tk.StringVar(value=self.config_manager.config["default_ssh_password"])
+        self.sudo_password = tk.StringVar(value=self.config_manager.config["default_sudo_password"])
+        self.output_dir = tk.StringVar(value=self.config_manager.config["last_output_dir"])
+        
+        # Application state
         self.is_running = False
         self.current_progress = 0
         self.total_hosts = 0
         
+        # Set up UI
         self.setup_ui()
         self.update_host_display()
         
+        # Set window geometry
+        self.root.geometry(self.config_manager.config["window_geometry"])
+        self.root.resizable(True, True)
+        
+        # Bind window close event
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+        
     def setup_ui(self):
-        # 创建主框架
+        """Set up the main user interface."""
+        # Create main frame
         main_frame = ttk.Frame(self.root, padding="10")
         main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
-        # 配置网格权重
+        # Configure grid weights
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
         main_frame.columnconfigure(1, weight=1)
         
-        # 标题
+        # Title
         title_label = ttk.Label(main_frame, text="SystemD Analysis Tool", 
                                font=("Arial", 16, "bold"))
         title_label.grid(row=0, column=0, columnspan=3, pady=(0, 20))
         
-        # 密码配置区域
+        # Password configuration area
         config_frame = ttk.LabelFrame(main_frame, text="Configuration", padding="10")
         config_frame.grid(row=1, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 10))
         config_frame.columnconfigure(1, weight=1)
@@ -375,12 +430,12 @@ class SystemDAnalyzerGUI:
         sudo_entry = ttk.Entry(config_frame, textvariable=self.sudo_password, show="*", width=20)
         sudo_entry.grid(row=0, column=3, sticky=(tk.W, tk.E))
         
-        # 主机列表区域
+        # Host list area
         hosts_frame = ttk.LabelFrame(main_frame, text="Target Hosts", padding="10")
         hosts_frame.grid(row=2, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 10))
         hosts_frame.columnconfigure(0, weight=1)
         
-        # 主机显示和配置按钮
+        # Host display and configuration button
         host_display_frame = ttk.Frame(hosts_frame)
         host_display_frame.grid(row=0, column=0, sticky=(tk.W, tk.E))
         host_display_frame.columnconfigure(0, weight=1)
@@ -394,7 +449,7 @@ class SystemDAnalyzerGUI:
                                        command=self.configure_hosts)
         config_hosts_button.grid(row=0, column=1, sticky=tk.E, padx=(10, 0))
         
-        # 输出目录选择
+        # Output directory selection
         dir_frame = ttk.Frame(main_frame)
         dir_frame.grid(row=3, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 10))
         dir_frame.columnconfigure(1, weight=1)
@@ -406,7 +461,7 @@ class SystemDAnalyzerGUI:
         dir_button = ttk.Button(dir_frame, text="Browse", command=self.browse_directory)
         dir_button.grid(row=0, column=2)
         
-        # 控制按钮
+        # Control buttons
         button_frame = ttk.Frame(main_frame)
         button_frame.grid(row=4, column=0, columnspan=3, pady=(0, 10))
         
@@ -424,7 +479,7 @@ class SystemDAnalyzerGUI:
         open_button = ttk.Button(button_frame, text="Open Results", command=self.open_results)
         open_button.pack(side=tk.LEFT)
         
-        # 进度条和状态
+        # Progress bar and status
         progress_frame = ttk.Frame(main_frame)
         progress_frame.grid(row=5, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 10))
         progress_frame.columnconfigure(0, weight=1)
@@ -435,7 +490,7 @@ class SystemDAnalyzerGUI:
         self.progress_label = ttk.Label(progress_frame, text="Ready")
         self.progress_label.grid(row=0, column=1)
         
-        # 日志输出区域
+        # Log output area
         log_frame = ttk.LabelFrame(main_frame, text="Output Log", padding="5")
         log_frame.grid(row=6, column=0, columnspan=3, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
         log_frame.columnconfigure(0, weight=1)
@@ -445,16 +500,18 @@ class SystemDAnalyzerGUI:
         self.log_text = scrolledtext.ScrolledText(log_frame, height=20, wrap=tk.WORD)
         self.log_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
-        # 状态栏
+        # Status bar
         self.status_var = tk.StringVar(value="Ready")
         status_bar = ttk.Label(main_frame, textvariable=self.status_var, relief=tk.SUNKEN)
         status_bar.grid(row=7, column=0, columnspan=3, sticky=(tk.W, tk.E))
         
     def update_host_display(self):
+        """Update the host display text."""
         hosts_text = "\n".join([f"• {name}: {addr}" for name, addr in self.hosts.items()])
         self.hosts_text_var.set(hosts_text)
         
     def configure_hosts(self):
+        """Open host configuration dialog."""
         dialog = HostConfigDialog(self.root, self.hosts)
         self.root.wait_window(dialog.dialog)
         
@@ -463,7 +520,8 @@ class SystemDAnalyzerGUI:
             self.update_host_display()
             self.log_message(f"Host configuration updated. Total hosts: {len(self.hosts)}", "INFO")
             
-    def update_progress(self, completed, total, current_host=""):
+    def update_progress(self, completed: int, total: int, current_host: str = ""):
+        """Update progress bar and label."""
         self.current_progress = completed
         self.total_hosts = total
         
@@ -482,18 +540,20 @@ class SystemDAnalyzerGUI:
         self.root.update()
         
     def browse_directory(self):
+        """Browse for output directory."""
         directory = filedialog.askdirectory(title="Select Output Directory")
         if directory:
             self.output_dir.set(directory)
             
-    def log_message(self, message, level="INFO"):
+    def log_message(self, message: str, level: str = "INFO"):
+        """Add a message to the log with timestamp and color coding."""
         timestamp = datetime.datetime.now().strftime("%H:%M:%S")
         colors = {"INFO": "black", "SUCCESS": "green", "ERROR": "red", "WARNING": "orange"}
         
         self.log_text.config(state=tk.NORMAL)
         self.log_text.insert(tk.END, f"[{timestamp}] {message}\n")
         
-        # 设置颜色
+        # Set color
         if level in colors:
             start_line = self.log_text.index(tk.END + "-2l linestart")
             end_line = self.log_text.index(tk.END + "-1l lineend")
@@ -505,11 +565,13 @@ class SystemDAnalyzerGUI:
         self.root.update()
         
     def clear_log(self):
+        """Clear the log output."""
         self.log_text.config(state=tk.NORMAL)
         self.log_text.delete(1.0, tk.END)
         self.log_text.config(state=tk.DISABLED)
         
     def start_analysis(self):
+        """Start the SystemD analysis process."""
         if not self.ssh_password.get() or not self.sudo_password.get():
             messagebox.showerror("Error", "Please enter both SSH and Sudo passwords")
             return
@@ -519,7 +581,7 @@ class SystemDAnalyzerGUI:
             return
             
         if not self.output_dir.get():
-            # 如果没有选择目录，使用当前目录
+            # Use current directory if none selected
             self.output_dir.set(os.getcwd())
             
         self.is_running = True
@@ -530,12 +592,13 @@ class SystemDAnalyzerGUI:
         self.update_progress(0, self.total_hosts)
         self.status_var.set("Running analysis...")
         
-        # 在新线程中运行分析
+        # Run analysis in new thread
         self.analysis_thread = threading.Thread(target=self.run_analysis)
         self.analysis_thread.daemon = True
         self.analysis_thread.start()
         
     def stop_analysis(self):
+        """Stop the analysis process."""
         self.is_running = False
         self.start_button.config(state="normal")
         self.stop_button.config(state="disabled")
@@ -544,8 +607,9 @@ class SystemDAnalyzerGUI:
         self.log_message("Analysis stopped by user", "WARNING")
         
     def run_analysis(self):
+        """Main analysis execution method."""
         try:
-            # 检查sshpass
+            # Check sshpass availability
             if not self.check_sshpass():
                 return
                 
@@ -569,7 +633,7 @@ class SystemDAnalyzerGUI:
                 self.update_progress(completed_count, self.total_hosts, hostname)
                 self.log_message(f"Processing host: {hostname} ({host_addr})", "INFO")
                 
-                # 检查SSH连接
+                # Test SSH connection
                 if not self.test_ssh_connection(host_addr):
                     self.log_message(f"  ✗ Cannot connect to {hostname} ({host_addr})", "ERROR")
                     completed_count += 1
@@ -578,7 +642,7 @@ class SystemDAnalyzerGUI:
                     
                 self.log_message(f"  ✓ SSH connection successful", "SUCCESS")
                 
-                # 执行远程命令
+                # Execute remote commands
                 if self.execute_remote_commands(hostname, host_addr, local_dir, timestamp):
                     success_count += 1
                     self.log_message(f"  ✓ {hostname} completed successfully", "SUCCESS")
@@ -593,10 +657,10 @@ class SystemDAnalyzerGUI:
                 self.log_message(f"Task completed! {success_count}/{self.total_hosts} hosts processed successfully", "SUCCESS")
                 self.log_message(f"Result files saved in: {local_dir}", "INFO")
                 
-                # 设置权限
+                # Set permissions
                 self.set_permissions(local_dir)
                 
-                # 生成报告
+                # Generate report
                 self.generate_report(local_dir, timestamp)
                 
                 self.status_var.set(f"Completed - {success_count}/{self.total_hosts} hosts successful")
@@ -609,7 +673,8 @@ class SystemDAnalyzerGUI:
             self.start_button.config(state="normal")
             self.stop_button.config(state="disabled")
             
-    def check_sshpass(self):
+    def check_sshpass(self) -> bool:
+        """Check if sshpass is available on the system."""
         try:
             subprocess.run(["sshpass", "-V"], capture_output=True, check=True)
             return True
@@ -619,7 +684,8 @@ class SystemDAnalyzerGUI:
             messagebox.showerror("Error", "sshpass is not installed.\nPlease install it with: sudo apt-get install sshpass")
             return False
             
-    def test_ssh_connection(self, host_addr):
+    def test_ssh_connection(self, host_addr: str) -> bool:
+        """Test SSH connection to a remote host."""
         try:
             cmd = [
                 "sshpass", "-p", self.ssh_password.get(),
@@ -628,14 +694,15 @@ class SystemDAnalyzerGUI:
             ]
             result = subprocess.run(cmd, capture_output=True, timeout=10)
             return result.returncode == 0
-        except:
+        except Exception:
             return False
             
-    def execute_remote_commands(self, hostname, host_addr, local_dir, timestamp):
+    def execute_remote_commands(self, hostname: str, host_addr: str, local_dir: str, timestamp: str) -> bool:
+        """Execute SystemD analysis commands on remote host."""
         try:
             self.log_message(f"  > Executing systemd-analyze commands...", "INFO")
             
-            # 创建远程脚本
+            # Create remote script
             remote_script = f'''
             TEMP_DIR="/tmp/systemd_analysis_$(date +%s)"
             mkdir -p "$TEMP_DIR"
@@ -656,7 +723,7 @@ class SystemDAnalyzerGUI:
             fi
             '''
             
-            # 执行远程脚本
+            # Execute remote script
             cmd = [
                 "sshpass", "-p", self.ssh_password.get(),
                 "ssh", "-o", "StrictHostKeyChecking=no", host_addr
@@ -665,7 +732,7 @@ class SystemDAnalyzerGUI:
             result = subprocess.run(cmd, input=remote_script, text=True, capture_output=True, timeout=60)
             
             if result.returncode == 0:
-                # 获取远程临时目录
+                # Get remote temporary directory
                 lines = result.stdout.strip().split('\n')
                 remote_temp_dir = lines[-1] if lines else ""
                 
@@ -678,13 +745,14 @@ class SystemDAnalyzerGUI:
             self.log_message(f"  ✗ Remote command execution failed: {str(e)}", "ERROR")
             return False
             
-    def download_files(self, hostname, host_addr, remote_temp_dir, local_dir, timestamp):
+    def download_files(self, hostname: str, host_addr: str, remote_temp_dir: str, local_dir: str, timestamp: str) -> bool:
+        """Download analysis files from remote host."""
         try:
             self.log_message(f"  > Downloading files...", "INFO")
             
             success = True
             
-            # 下载dump.log
+            # Download dump.log
             dump_file = os.path.join(local_dir, f"{hostname}_{timestamp}_dump.log")
             cmd = [
                 "sshpass", "-p", self.ssh_password.get(),
@@ -699,7 +767,7 @@ class SystemDAnalyzerGUI:
                 self.log_message(f"    ✗ dump.log download failed", "ERROR")
                 success = False
                 
-            # 下载plot.svg
+            # Download plot.svg
             plot_file = os.path.join(local_dir, f"{hostname}_{timestamp}_plot.svg")
             cmd = [
                 "sshpass", "-p", self.ssh_password.get(),
@@ -714,7 +782,7 @@ class SystemDAnalyzerGUI:
                 self.log_message(f"    ✗ plot.svg download failed", "ERROR")
                 success = False
                 
-            # 清理远程临时文件
+            # Clean up remote temporary files
             cmd = [
                 "sshpass", "-p", self.ssh_password.get(),
                 "ssh", "-o", "StrictHostKeyChecking=no", host_addr,
@@ -729,15 +797,16 @@ class SystemDAnalyzerGUI:
             self.log_message(f"  ✗ File download failed: {str(e)}", "ERROR")
             return False
             
-    def set_permissions(self, local_dir):
+    def set_permissions(self, local_dir: str):
+        """Set appropriate permissions for output files."""
         try:
             self.log_message("> Setting file permissions...", "INFO")
             
-            # 设置目录权限
+            # Set directory permissions
             os.chmod(local_dir, 0o755)
             self.log_message("  ✓ Directory permissions set (755)", "SUCCESS")
             
-            # 设置文件权限
+            # Set file permissions
             for file in os.listdir(local_dir):
                 file_path = os.path.join(local_dir, file)
                 if os.path.isfile(file_path):
@@ -747,12 +816,13 @@ class SystemDAnalyzerGUI:
         except Exception as e:
             self.log_message(f"  ! Could not set permissions: {str(e)}", "WARNING")
             
-    def generate_report(self, local_dir, timestamp):
+    def generate_report(self, local_dir: str, timestamp: str):
+        """Generate a summary report of the analysis."""
         try:
             self.log_message("Generating summary report...", "INFO")
             
             report_file = os.path.join(local_dir, "README.txt")
-            with open(report_file, 'w') as f:
+            with open(report_file, 'w', encoding='utf-8') as f:
                 f.write("SystemD Analysis Report\n")
                 f.write("======================\n")
                 f.write(f"Generated at: {datetime.datetime.now()}\n")
@@ -771,23 +841,54 @@ class SystemDAnalyzerGUI:
             self.log_message(f"! Could not generate report: {str(e)}", "WARNING")
             
     def open_results(self):
+        """Open the results directory in file manager."""
         if self.output_dir.get() and os.path.exists(self.output_dir.get()):
-            subprocess.run(["xdg-open", self.output_dir.get()])
+            try:
+                subprocess.run(["xdg-open", self.output_dir.get()])
+            except FileNotFoundError:
+                # Fallback for systems without xdg-open
+                subprocess.run(["open", self.output_dir.get()])
         else:
             messagebox.showwarning("Warning", "No output directory selected or directory doesn't exist")
+            
+    def on_closing(self):
+        """Handle application closing - save configuration."""
+        try:
+            # Save current configuration
+            config = {
+                "hosts": self.hosts,
+                "default_ssh_password": self.ssh_password.get(),
+                "default_sudo_password": self.sudo_password.get(),
+                "last_output_dir": self.output_dir.get(),
+                "window_geometry": self.root.geometry()
+            }
+            
+            if self.config_manager.save_config(config):
+                logger.info("Configuration saved successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to save configuration: {e}")
+        
+        self.root.destroy()
 
 def main():
-    root = tk.Tk()
-    app = SystemDAnalyzerGUI(root)
-    
-    # 设置应用图标（如果有的话）
+    """Main application entry point."""
     try:
-        # root.iconbitmap('icon.ico')  # 如果有图标文件
-        pass
-    except:
-        pass
+        root = tk.Tk()
+        app = SystemDAnalyzerGUI(root)
         
-    root.mainloop()
+        # Set application icon if available
+        try:
+            # root.iconbitmap('icon.ico')  # Uncomment if icon file exists
+            pass
+        except Exception:
+            pass
+            
+        root.mainloop()
+        
+    except Exception as e:
+        logger.error(f"Application failed to start: {e}")
+        messagebox.showerror("Error", f"Failed to start application: {str(e)}")
 
 if __name__ == "__main__":
     main()
