@@ -142,6 +142,28 @@ enable_screen_recorder() {
   check_screen_recorder_status
 }
 
+# Function to get MP4 file list with detailed info
+get_mp4_file_list() {
+  # Use find with -print0 and process with null delimiter for better handling of filenames with spaces
+  local mp4_list_raw
+  mp4_list_raw=$(execute_remote_command "find '${REMOTE_DIR}' -maxdepth 1 -name '*.mp4' -type f -print0 2>/dev/null")
+  
+  if [ -z "$mp4_list_raw" ]; then
+      return 1
+  fi
+  
+  # Convert null-delimited list to array
+  local mp4_files=()
+  while IFS= read -r -d '' file; do
+      if [ -n "$file" ]; then
+          mp4_files+=("$file")
+      fi
+  done <<< "$mp4_list_raw"
+  
+  # Export the array for use in other functions
+  printf '%s\n' "${mp4_files[@]}"
+}
+
 # Function to download MP4 files
 download_mp4_files() {
   echo -e "${CYAN}=== Downloading MP4 Files ===${NC}"
@@ -158,38 +180,65 @@ download_mp4_files() {
   
   # Get remote MP4 file list
   echo -e "${YELLOW}Retrieving remote MP4 file list...${NC}"
-  MP4_FILES=$(execute_remote_command "find ${REMOTE_DIR} -maxdepth 1 -name '*.mp4' -type f 2>/dev/null")
   
-  if [ -z "$MP4_FILES" ]; then
+  # Create a temporary file to store the file list
+  local temp_file_list
+  temp_file_list=$(mktemp)
+  
+  # Get file list using a more robust method
+  execute_remote_command "find '${REMOTE_DIR}' -maxdepth 1 -name '*.mp4' -type f -exec ls -lh {} \; 2>/dev/null" > "$temp_file_list"
+  
+  if [ ! -s "$temp_file_list" ]; then
       echo -e "${YELLOW}No .mp4 files found in ${REMOTE_DIR} directory${NC}"
       
       # Check if directory exists
       echo -e "${YELLOW}Checking if directory exists...${NC}"
-      DIR_CHECK=$(execute_remote_command "ls -la ${REMOTE_DIR} 2>/dev/null")
+      DIR_CHECK=$(execute_remote_command "ls -la '${REMOTE_DIR}' 2>/dev/null")
       if [ -n "$DIR_CHECK" ]; then
           echo -e "${BLUE}Directory contents:${NC}"
           echo "$DIR_CHECK"
       else
           echo -e "${RED}Directory ${REMOTE_DIR} does not exist or is not accessible${NC}"
       fi
+      rm -f "$temp_file_list"
       return 0
   fi
   
-  # Display found files
+  # Parse and display found files
   echo -e "${GREEN}Found MP4 files:${NC}"
-  FILE_COUNT=0
+  local file_count=0
+  local -a mp4_files_array
   
-  while IFS= read -r file; do
-      if [ -n "$file" ]; then
-          filename=$(basename "$file")
-          fileinfo=$(execute_remote_command "ls -lh '$file' 2>/dev/null | awk '{print \$5, \$6, \$7, \$8}'")
-          echo -e "  ${BLUE}•${NC} $filename ($fileinfo)"
-          FILE_COUNT=$((FILE_COUNT + 1))
+  # Read file information and build array
+  while IFS= read -r line; do
+      if [ -n "$line" ]; then
+          # Extract filename from ls -lh output (last field)
+          local filename
+          filename=$(echo "$line" | awk '{print $NF}')
+          local basename_file
+          basename_file=$(basename "$filename")
+          
+          # Extract file size and date
+          local filesize
+          local filedate
+          filesize=$(echo "$line" | awk '{print $5}')
+          filedate=$(echo "$line" | awk '{print $6, $7, $8}')
+          
+          echo -e "  ${BLUE}•${NC} $basename_file (${filesize}, ${filedate})"
+          mp4_files_array+=("$filename")
+          file_count=$((file_count + 1))
       fi
-  done <<< "$MP4_FILES"
+  done < "$temp_file_list"
+  
+  rm -f "$temp_file_list"
   
   echo
-  echo -e "${GREEN}Total files found: $FILE_COUNT${NC}"
+  echo -e "${GREEN}Total files found: $file_count${NC}"
+  
+  if [ $file_count -eq 0 ]; then
+      echo -e "${YELLOW}No MP4 files to download${NC}"
+      return 0
+  fi
   
   # Ask user confirmation for download
   echo -e "${YELLOW}Do you want to download these files? (y/N):${NC} "
@@ -201,32 +250,34 @@ download_mp4_files() {
   
   # Download files
   echo -e "${YELLOW}Starting file download...${NC}"
-  DOWNLOAD_COUNT=0
-  FAILED_COUNT=0
+  local download_count=0
+  local failed_count=0
   
-  while IFS= read -r remote_file; do
+  for remote_file in "${mp4_files_array[@]}"; do
       if [ -n "$remote_file" ]; then
+          local filename
           filename=$(basename "$remote_file")
-          local_file="${LOCAL_DIR}/${filename}"
+          local local_file="${LOCAL_DIR}/${filename}"
           
           echo -e "${YELLOW}Downloading: $filename${NC}"
           
+          # Use quotes to handle filenames with spaces
           if sshpass -p "$REMOTE_PASSWORD" scp -o StrictHostKeyChecking=no "${REMOTE_USER}@${REMOTE_HOST}:${remote_file}" "$local_file" 2>/dev/null; then
               echo -e "${GREEN}✓ Download completed: $filename${NC}"
-              DOWNLOAD_COUNT=$((DOWNLOAD_COUNT + 1))
+              download_count=$((download_count + 1))
           else
               echo -e "${RED}✗ Download failed: $filename${NC}"
-              FAILED_COUNT=$((FAILED_COUNT + 1))
+              failed_count=$((failed_count + 1))
           fi
           echo
       fi
-  done <<< "$MP4_FILES"
+  done
   
   echo -e "${GREEN}=== Download Summary ===${NC}"
   echo "Local files saved in: $LOCAL_DIR"
-  echo "Total files processed: $FILE_COUNT"
-  echo -e "Successfully downloaded: ${GREEN}$DOWNLOAD_COUNT${NC}"
-  echo -e "Failed downloads: ${RED}$FAILED_COUNT${NC}"
+  echo "Total files processed: $file_count"
+  echo -e "Successfully downloaded: ${GREEN}$download_count${NC}"
+  echo -e "Failed downloads: ${RED}$failed_count${NC}"
   echo
   echo "View downloaded files with:"
   echo "ls -la \"$LOCAL_DIR\""
@@ -235,7 +286,68 @@ download_mp4_files() {
   if [ -d "$LOCAL_DIR" ] && [ "$(ls -A "$LOCAL_DIR" 2>/dev/null)" ]; then
       echo
       echo -e "${BLUE}Downloaded files disk usage:${NC}"
-      du -sh "$LOCAL_DIR"/* 2>/dev/null
+      du -sh "$LOCAL_DIR"/* 2>/dev/null | sort -hr
+      echo
+      echo -e "${BLUE}Total size:${NC}"
+      du -sh "$LOCAL_DIR" 2>/dev/null
+  fi
+}
+
+# Function to list remote MP4 files (new feature)
+list_remote_mp4_files() {
+  echo -e "${CYAN}=== Remote MP4 Files List ===${NC}"
+  
+  if ! test_ssh_connection; then
+      return 1
+  fi
+  
+  echo -e "${YELLOW}Scanning remote directory: ${REMOTE_DIR}${NC}"
+  
+  # Get detailed file list
+  local file_list
+  file_list=$(execute_remote_command "find '${REMOTE_DIR}' -maxdepth 1 -name '*.mp4' -type f -exec ls -lh {} \; 2>/dev/null | sort -k9")
+  
+  if [ -z "$file_list" ]; then
+      echo -e "${YELLOW}No .mp4 files found in ${REMOTE_DIR}${NC}"
+      
+      # Show directory contents for debugging
+      echo -e "${BLUE}Directory contents (first 10 items):${NC}"
+      execute_remote_command "ls -la '${REMOTE_DIR}' 2>/dev/null | head -10"
+      return 0
+  fi
+  
+  echo -e "${GREEN}MP4 files found:${NC}"
+  echo
+  printf "%-40s %-10s %-20s\n" "FILENAME" "SIZE" "DATE"
+  printf "%-40s %-10s %-20s\n" "--------" "----" "----"
+  
+  local file_count=0
+  local total_size=0
+  
+  while IFS= read -r line; do
+      if [ -n "$line" ]; then
+          local filename
+          filename=$(echo "$line" | awk '{print $NF}')
+          local basename_file
+          basename_file=$(basename "$filename")
+          local filesize
+          filesize=$(echo "$line" | awk '{print $5}')
+          local filedate
+          filedate=$(echo "$line" | awk '{print $6, $7, $8}')
+          
+          printf "%-40s %-10s %-20s\n" "$basename_file" "$filesize" "$filedate"
+          file_count=$((file_count + 1))
+      fi
+  done <<< "$file_list"
+  
+  echo
+  echo -e "${GREEN}Total files: $file_count${NC}"
+  
+  # Calculate total size
+  local total_size_output
+  total_size_output=$(execute_remote_command "find '${REMOTE_DIR}' -maxdepth 1 -name '*.mp4' -type f -exec du -ch {} + 2>/dev/null | tail -1")
+  if [ -n "$total_size_output" ]; then
+      echo -e "${BLUE}Total size: $(echo "$total_size_output" | awk '{print $1}')${NC}"
   fi
 }
 
@@ -250,10 +362,11 @@ show_menu() {
   echo -e "${CYAN}Please select an option:${NC}"
   echo "1) Check screen recorder service status"
   echo "2) Enable and start screen recorder service"
-  echo "3) Download MP4 files from remote host"
-  echo "4) Exit"
+  echo "3) List remote MP4 files"
+  echo "4) Download MP4 files from remote host"
+  echo "5) Exit"
   echo
-  echo -n "Enter your choice (1-4): "
+  echo -n "Enter your choice (1-5): "
 }
 
 # Main program loop
@@ -278,16 +391,22 @@ main() {
               ;;
           3)
               echo
-              download_mp4_files
+              list_remote_mp4_files
               echo -e "${BLUE}Press Enter to continue...${NC}"
               read -r
               ;;
           4)
+              echo
+              download_mp4_files
+              echo -e "${BLUE}Press Enter to continue...${NC}"
+              read -r
+              ;;
+          5)
               echo -e "${GREEN}Goodbye!${NC}"
               exit 0
               ;;
           *)
-              echo -e "${RED}Invalid option. Please enter 1-4.${NC}"
+              echo -e "${RED}Invalid option. Please enter 1-5.${NC}"
               sleep 1
               ;;
       esac
