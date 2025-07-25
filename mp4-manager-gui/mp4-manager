@@ -1,0 +1,13 @@
+#!/bin/bash
+# Remote MP4 Manager Launcher Script
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+EXECUTABLE="$SCRIPT_DIR/Remote_MP4_Manager"
+
+if [ -f "$EXECUTABLE" ]; then
+    cd "$SCRIPT_DIR"
+    exec "$EXECUTABLE" "$@"
+else
+    echo "Error: Remote_MP4_Manager executable not found in $SCRIPT_DIR"
+    exit 1
+fi

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Remote MP4 Manager
+Comment=Remote MP4 File Management Tool with GUI
+Exec=/home/shanpengma/Desktop/cfg_my_env/mp4-manager-gui/Remote_MP4_Manager
+Icon=video-x-generic
+Terminal=false
+Categories=AudioVideo;Video;Network;
+StartupNotify=true
+Keywords=mp4;video;remote;ssh;download;

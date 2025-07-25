@@ -1,0 +1,13 @@
+#!/bin/bash
+# SystemD Analyzer Launcher Script
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+EXECUTABLE="$SCRIPT_DIR/SystemD_Analyzer"
+
+if [ -f "$EXECUTABLE" ]; then
+    cd "$SCRIPT_DIR"
+    exec "$EXECUTABLE" "$@"
+else
+    echo "Error: SystemD_Analyzer executable not found in $SCRIPT_DIR"
+    exit 1
+fi

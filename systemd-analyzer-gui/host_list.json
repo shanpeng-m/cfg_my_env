@@ -1,0 +1,7 @@
+{
+  "main": "autoware@192.168.20.11",
+  "sub": "autoware@192.168.20.21",
+  "perception1": "autoware@192.168.20.31",
+  "perception2": "autoware@192.168.20.32",
+  "logging": "autoware@192.168.20.71"
+}
