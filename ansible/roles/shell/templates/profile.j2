@@ -1,0 +1,25 @@
+# ~/.profile
+
+export PATH="$HOME/.local/bin:$PATH"
+
+export CCACHE_DIR="$HOME/.cache/ccache"
+export CC="/usr/lib/ccache/gcc"
+export CXX="/usr/lib/ccache/g++"
+
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export CYCLONEDDS_URI="file://$HOME/cyclonedds.xml"
+export ROS_DOMAIN_ID=1
+
+export CUDA_HOME="/usr/local/cuda"
+export PATH="$CUDA_HOME/bin:$PATH"
+export LD_LIBRARY_PATH="$CUDA_HOME/lib64:$LD_LIBRARY_PATH"
+
+[ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
+
+export PNPM_HOME="$HOME/.local/share/pnpm"
+export PATH="$PNPM_HOME:$PATH"
+
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
+
+[ -f "$HOME/.x-cmd.root/X" ] && . "$HOME/.x-cmd.root/X"

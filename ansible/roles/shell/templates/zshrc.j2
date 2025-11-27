@@ -1,0 +1,36 @@
+# ~/.zshrc
+
+if [ -x /home/linuxbrew/.linuxbrew/bin/brew ]; then
+    eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+fi
+
+export ZSH="$HOME/.oh-my-zsh"
+ZSH_THEME="cobalt2"
+
+plugins=(
+  git
+  web-search
+  jsontools
+  z
+  zsh-autosuggestions
+  zsh-syntax-highlighting
+  history-substring-search
+  fzf-tab
+)
+
+fpath+=("$(brew --prefix)/share/zsh/site-functions")
+
+source $ZSH/oh-my-zsh.sh
+
+if [ -z "$SSH_AUTH_SOCK" ]; then
+  eval "$(ssh-agent -s)" >/dev/null
+  ssh-add ~/.ssh/id_rsa_github 2>/dev/null
+fi
+
+[ -f /opt/ros/humble/setup.zsh ] && source /opt/ros/humble/setup.zsh
+[ -s "$HOME/.bun/_bun" ] && source "$HOME/.bun/_bun"
+
+alias claude="$HOME/.claude/local/claude"
+
+autoload -U compinit
+compinit -u

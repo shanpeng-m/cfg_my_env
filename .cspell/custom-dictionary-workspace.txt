@@ -1,0 +1,27 @@
+# Custom Dictionary Words
+ccache
+CCACHE
+chsh
+compinit
+cuda
+CUDA
+cyclonedds
+CYCLONEDDS
+dircolors
+esac
+fpath
+histappend
+HISTCONTROL
+HISTFILESIZE
+HISTSIZE
+ignoreboth
+insertafter
+jsonfile
+jsontools
+lesspipe
+lineinfile
+linuxbrew
+RUNZSH
+shanpengma
+shellenv
+shopt

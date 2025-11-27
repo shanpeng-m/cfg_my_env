@@ -1,0 +1,117 @@
+---
+############################################################
+# Install Homebrew on Linux
+############################################################
+- name: Install Homebrew on Linux
+  become: true
+  shell: |
+    mkdir -p /home/linuxbrew/.linuxbrew
+    chown -R {{ ansible_user_id }}:{{ ansible_user_gid }} /home/linuxbrew/.linuxbrew
+  args:
+    creates: /home/linuxbrew/.linuxbrew
+
+- name: Run Homebrew installation script
+  become: false
+  shell: |
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  args:
+    creates: /home/linuxbrew/.linuxbrew/bin/brew
+
+- name: Add Homebrew to environment (Linux)
+  lineinfile:
+    path: "{{ ansible_user_dir }}/.profile"
+    line: 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"'
+    insertafter: EOF
+
+############################################################
+# 安装必要包
+############################################################
+- name: Install zsh + dependencies (Linux)
+  become: true
+  apt:
+    name:
+      - zsh
+      - curl
+      - git
+      - fzf
+      - bash-completion
+    state: present
+    update_cache: yes
+
+############################################################
+# 安装 Oh-My-Zsh（幂等）
+############################################################
+- name: Download oh-my-zsh installer
+  get_url:
+    url: https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh
+    dest: /tmp/install-ohmyzsh.sh
+    mode: 0755
+
+- name: Install Oh My Zsh
+  become_user: "{{ ansible_user_id }}"
+  shell: |
+    RUNZSH=no KEEP_ZSHRC=yes sh /tmp/install-ohmyzsh.sh --unattended
+  args:
+    creates: "{{ ansible_user_dir }}/.oh-my-zsh"
+
+############################################################
+# 安装 zsh 插件
+############################################################
+- name: Install Zsh plugins
+  git:
+    repo: "{{ item.repo }}"
+    dest: "{{ ansible_user_dir }}/.oh-my-zsh/custom/plugins/{{ item.name }}"
+    depth: 1
+  loop:
+    - { name: zsh-autosuggestions, repo: "https://github.com/zsh-users/zsh-autosuggestions" }
+    - { name: zsh-syntax-highlighting, repo: "https://github.com/zsh-users/zsh-syntax-highlighting" }
+    - { name: history-substring-search, repo: "https://github.com/zsh-users/zsh-history-substring-search" }
+    - { name: fzf-tab, repo: "https://github.com/Aloxaf/fzf-tab" }
+
+############################################################
+# 部署 dotfiles（模板）
+############################################################
+- name: Deploy .zshrc
+  template:
+    src: zshrc.j2
+    dest: "{{ ansible_user_dir }}/.zshrc"
+    owner: "{{ ansible_user_id }}"
+    mode: 0644
+
+- name: Deploy .bashrc
+  template:
+    src: bashrc.j2
+    dest: "{{ ansible_user_dir }}/.bashrc"
+    owner: "{{ ansible_user_id }}"
+    mode: 0644
+
+- name: Deploy .profile
+  template:
+    src: profile.j2
+    dest: "{{ ansible_user_dir }}/.profile"
+    owner: "{{ ansible_user_id }}"
+    mode: 0644
+
+############################################################
+# 设置默认 shell
+############################################################
+- name: Set zsh as default shell
+  become: true
+  shell: |
+    if [[ $(basename "$SHELL") != "zsh" ]]; then
+      chsh -s $(which zsh) {{ ansible_user_id }}
+    fi
+  args:
+    executable: /bin/bash
+  changed_when: false
+
+############################################################
+# 验证安装
+############################################################
+- name: Verify Zsh installation
+  command: zsh --version
+  register: zsh_version
+  changed_when: false
+
+- debug:
+    msg: "Zsh installed: {{ zsh_version.stdout }}"

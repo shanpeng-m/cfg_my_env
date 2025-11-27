@@ -1,8 +1,0 @@
-- name: Detect System Type
-  setup:
-    filter: ansible_os_family
-  tags: always
-
-- include_tasks: install_zsh.yml
-- include_tasks: configure_zsh.yml
-- include_tasks: post_install.yml

@@ -1,13 +1,10 @@
 - name: 配置本地开发环境
   hosts: localhost
-  become: true # 某些任务需要sudo权限
+  
+  become: true
   vars:
-    is_macos: ansible_os_family == "Darwin"
-    is_linux: ansible_os_family == "Debian" or ansible_os_family == "RedHat"
+    user_home: "{{ ansible_user_dir }}"
+    user_name: "{{ ansible_user_id }}"
 
   roles:
-    - role: common
-    - role: install_homebrew
-    - role: install_dev_tools
-    - role: install_zsh
-      when: is_macos or is_linux # 根据系统类型执行
+    - role: shell
